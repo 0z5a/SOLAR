@@ -5,6 +5,40 @@ schedule for a caller supplied task DAG. It is separate from the existing
 `unfused`, `fused`, and `fused_prefetched` roofline predictions; those outputs
 are unchanged. No operator graph is silently treated as a CUDA kernel graph.
 
+## Intended use and relation to SOL
+
+This tool evaluates a caller's explicit dependency, stream-order, and exclusive
+resource constraints with fixed task durations. It can answer whether a proposed
+ordering serializes otherwise independent tasks, where a dependency chain limits
+overlap, and when an exclusive resource leaves a ready task waiting. Its scope
+is one supplied plan; it does not search for an optimal schedule.
+
+In `solar/perf/perf_model.py`, each existing roofline variant computes total
+cycles as the maximum of aggregate tensor-core compute cycles and that variant's
+aggregate memory cycles. The variants use different memory-traffic estimates.
+With fixed work and fixed traffic, changing task order does not change these SOL
+values. An explicit schedule can still take longer because of dependencies or
+resource serialization.
+
+For a toy workload with normalized compute cost 3 ns and memory cost 5 ns, the
+aggregate roofline is 5 ns for every ordering. Supplying two synthetic tasks of
+those durations gives:
+
+| Supplied constraints | Aggregate roofline (ns) | Critical path (ns) | Schedule estimate (ns) |
+|---|---:|---:|---:|
+| Separate streams and resources | 5 | 5 | 5 |
+| One stream, explicit serial order | 5 | 8 | 8 |
+| Separate streams, one exclusive resource | 5 | 5 | 8 |
+
+These numbers illustrate the additional constraints; they are not GPU timing
+measurements. The supplied durations have no automatic connection to SOLAR's
+einsum costs, and the resource model does not establish whether real GPU kernels
+can overlap. The schedule estimate is not a tighter hardware SOL bound.
+
+A calibrated duration model, realistic concurrent-resource behavior, and a
+schedule search would be separate extensions. They are not prerequisites assumed
+by this standalone synthetic-plan evaluator.
+
 Run the included end-to-end example:
 
 ```bash
